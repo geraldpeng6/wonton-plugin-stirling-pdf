@@ -33,6 +33,11 @@ services:
       # 登录后面，打开就能用。上游 OIDC 虽然免费，但无法用配置把主人配成管理员（应用拒绝
       # 同名密码账号走 SSO 登录，自动建的用户固定是 USER），所以不开应用登录。
       DOCKER_ENABLE_SECURITY: "false"
+      # 登录关了，但安全模块仍会预建管理员；不指定时上游用写死的 admin/stirling，经
+      # /api/v1/auth/login 仍可登成 ROLE_ADMIN（实测）。这里用核心生成的密码预建同名账号，
+      # 默认口令失效；密码无人使用，只存在核心密钥库。
+      SECURITY_INITIALLOGIN_USERNAME: admin
+      SECURITY_INITIALLOGIN_PASSWORD: ${WONTON_SECRET_ADMIN_PASSWORD}
       # 界面默认中文；关闭统计（PostHog/Scarf）和首次启动的统计询问；搜索屏蔽保持默认。
       # 新版本检查是应用发起的外连，插件不出网，关掉（更新看商店或上游仓库）。
       SYSTEM_DEFAULTLOCALE: zh-CN
@@ -98,4 +103,7 @@ x-wonton:
   webui:
     service: app
     port: 8080
+  secrets:
+    admin_password:
+      generate: { bytes: 32 }
   permissions: []
