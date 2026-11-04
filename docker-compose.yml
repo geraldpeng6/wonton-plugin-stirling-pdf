@@ -1,61 +1,116 @@
-# 示例插件：nginx 显示一个网页，向登录的人问好。照着 README 的“写插件”换成你的应用。
-services:
-  web:
-    # 镜像按摘要固定（多架构镜像写清单列表的摘要），标签只给人看。
-    image: nginx:1.30.6-alpine@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949
-    # 包里的文件经 configs 交给容器（核心在启动前写进去），不能用卷挂载。
-    configs:
-      - source: site
-        target: /etc/nginx/conf.d/default.conf
-      - source: page
-        target: /usr/share/nginx/html/index.html
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
-      interval: 30s
-      timeout: 5s
-      start_period: 30s
-      start_interval: 1s
+name: stirling-pdf
 
-configs:
-  site:
-    file: web/default.conf
-  page:
-    file: web/index.html
+services:
+  # Stirling 以镜像里固定的 uid 1000（stirlingpdfuser）运行：容器以 root 起来后由上游入口脚本
+  # setpriv 降权，compose 不写 user。核心对 root 启动的服务把数据目录交给 PUID:PGID，
+  # 宿主 PUID 不是 1000 时应用就写不了；这里统一交给 1000，每次创建容器跑一遍，幂等。
+  init:
+    image: &image stirlingtools/stirling-pdf:3.2.2@sha256:c6872dd056b0046a14c5de1e9970283e7f1e1ff685bb08090c6b37a231127d31
+    user: "0:0"
+    entrypoint: ["/bin/sh", "-c", "chown -R 1000:1000 /configs"]
+    volumes:
+      - ${WONTON_APP_DATA}/configs:/configs
+    network_mode: none
+    restart: "no"
+
+  app:
+    image: *image
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      TZ: ${TZ}
+      # 登录交给核心的身份提供方（webui.sso: oidc）：打开网页自动跳到云吞登录，回插件网页时已是登录态。
+      # 不开本地登录页（loginMethod=oauth2），初始管理员账号的密码只在核心密钥库里，没人用密码登。
+      DOCKER_ENABLE_SECURITY: "true"
+      SECURITY_ENABLELOGIN: "true"
+      SECURITY_LOGINMETHOD: oauth2
+      SECURITY_SSOAUTOLOGIN: "true"
+      SECURITY_OAUTH2_ENABLED: "true"
+      SECURITY_OAUTH2_PROVIDER: wonton
+      SECURITY_OAUTH2_ISSUER: ${WONTON_OIDC_ISSUER}
+      SECURITY_OAUTH2_CLIENTID: ${WONTON_OIDC_CLIENT_ID}
+      SECURITY_OAUTH2_CLIENTSECRET: ${WONTON_OIDC_CLIENT_SECRET}
+      SECURITY_OAUTH2_SCOPES: "openid, profile, email"
+      SECURITY_OAUTH2_USEASUSERNAME: preferred_username
+      SECURITY_OAUTH2_AUTOCREATEUSER: "true"
+      # 预建和管理员：用户名用注入的主人用户名，首次 OIDC 登录按 preferred_username 匹配到它并
+      # 迁移成 SSO 账号，主人直接是管理员。没有它上游会用 admin/stirling 默认账号。
+      SECURITY_INITIALLOGIN_USERNAME: ${WONTON_OWNER_NAME}
+      SECURITY_INITIALLOGIN_PASSWORD: ${WONTON_SECRET_INITIAL_PASSWORD}
+      # 界面默认中文；关闭统计（PostHog/Scarf）和首次启动的统计询问；搜索屏蔽保持默认。
+      SYSTEM_DEFAULTLOCALE: zh-CN
+      SYSTEM_ENABLEANALYTICS: "false"
+      SYSTEM_GOOGLEVISIBILITY: "false"
+      SHOW_SURVEY: "false"
+    volumes:
+      # 用户库（H2 数据库）、设置和堆转储都在 /configs，官方文档要求挂卷否则容器重建即丢。
+      - ${WONTON_APP_DATA}/configs:/configs
+    healthcheck:
+      # 上游镜像自带的健康检查端点。
+      test: ["CMD-SHELL", "curl -fs --max-time 10 http://127.0.0.1:8080/api/v1/info/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+      start_interval: 2s
 
 x-wonton:
   spec: "0.4"
-  # 换成你自己的：反向域名形式，装上以后不能改。
-  id: app.example.hello
-  version: 0.1.1
+  id: com.stirlingtools.stirling-pdf
+  version: 0.1.0
   kind: app
-  title: { zh: 你好, en: Hello }
-  description: { zh: 向登录的人问好的示例网页, en: An example page that greets whoever is signed in }
+  title: { zh: Stirling-PDF, en: Stirling-PDF }
+  description:
+    zh: "本地 PDF 工具箱：合并、拆分、压缩、转换、OCR，文件不出你的机器"
+    en: "Local PDF toolbox: merge, split, compress, convert and OCR, files never leave your machine"
   icon: icon.svg
   notices: [NOTICE]
-  screenshots: [screenshots/home.png]
-  author: { name: Example }
-  homepage: https://nginx.org
-  # 应用（这里是 nginx）的许可证；插件包自己的许可证写在仓库的 LICENSE 里。
-  license: BSD-2-Clause
+  screenshots: [screenshots/phone.png]
+  author: { name: geraldpeng6, url: https://github.com/geraldpeng6 }
+  homepage: https://stirling.com
+  # 应用（Stirling-PDF）主体是 MIT；app/proprietary/、engine/ 等目录另有许可，见 NOTICE。
+  license: MIT
   tags:
-    zh: [工具]
-    en: [Tools]
+    zh: [PDF, 文档, 工具]
+    en: [PDF, Documents, Tools]
   about:
     zh: |
-      一个示例网页：登录以后，页面会向你问好。新建插件时可以照着改。
+      60 多个 PDF 工具：合并、拆分、压缩、加密码、去密码、转图片、图片转 PDF、Office 互转、OCR 文字识别、
+      页面整理、水印、签名、元数据编辑等，全部在本机处理。
+
+      中文 OCR 开箱即用（内置简体中文语言包）。登录用云吞账号，打开即进主界面。免费版含全部 PDF 工具
+      和 OIDC 单点登录；付费版独有的功能（外接数据库、SAML、审计日志、集群）不可用。
+
+      处理的文件只存在插件数据目录的临时空间里，完成即取走，不申请出网。
     en: |
-      An example page: once you are signed in, the page says hello. Copy it as a starting point for a new plugin.
-  release_notes: { zh: 名字和说明更新。, en: Product name and description update. }
-  webui:
-    service: web
-    port: 80
-    # 应用不认 OIDC 时，由网关在请求上加上用户名（README 的“网页入口和登录”）。
-    sso: proxy
-    proxy:
-      headers:
-        Remote-User: "{user}"
-  permissions: []
-  # 上游 nginx 官方镜像，amd64 和 arm64 都有；上游没写最低内存，按本机空闲实测取整（实测约 24M，取 64M）。
+      60+ PDF tools: merge, split, compress, encrypt, decrypt, convert to images, images to PDF,
+      Office conversion, OCR, page organizer, watermark, signing, metadata editing and more, all processed locally.
+
+      Chinese OCR works out of the box (Simplified Chinese language pack included). Sign-in uses your
+      Wonton account. The free tier includes all PDF tools and OIDC single sign-on; paid-only features
+      (external database, SAML, audit logging, clustering) are unavailable.
+
+      Processed files only touch the plugin's own storage and are gone once you download them. No internet permission is requested.
+  release_notes: { zh: 第一版。, en: First release. }
+  # 镜像支持 amd64 和 arm64（docker buildx imagetools inspect）；上游未写最低内存，JVM 按容器内存自动调，
+  # OCR 加 LibreOffice 转换按 2G 报。
   requirements:
     arch: [amd64, arm64]
-    memory: 64M
+    memory: 2G
+  webui:
+    service: app
+    port: 8080
+    # 打开网页跳到核心的身份提供方（Ory Hydra），回插件网页时已是登录态；用户名来自
+    # OIDC 的 preferred_username，与注入的 WONTON_OWNER_NAME 同值。
+    sso: oidc
+    oidc:
+      # Spring Security 的 OIDC 回调路径（provider 名用 SECURITY_OAUTH2_PROVIDER=wonton）。
+      redirect_paths: [/login/oauth2/code/wonton]
+      token_endpoint_auth_method: client_secret_basic
+  secrets:
+    initial_password:
+      generate: { bytes: 32 }
+  permissions:
+    # 初始管理员账号用注入的用户名建（README 第 7 步：拿用户名建系统账号要申请 owner.identity）。
+    - owner.identity

@@ -1,11 +1,17 @@
-# 云吞插件模板
+# 云吞插件：Stirling-PDF
 
 云吞（Wonton）的插件就是一个 `docker-compose.yml`，顶层多一个 `x-wonton` 字段，写明插件在云吞里的身份、网页入口和要的
 权限。一个插件一个 Git 仓库，仓库根目录就是插件包，发布就是打 tag。用户在 App 里装上插件，核心按清单起容器、接好登录，
 插件的网页在 App 里作为小程序打开。
 
-这个仓库是模板：一个能装上的示例插件（nginx 显示一个向用户问好的网页），加上检查、开发环境和发布三个脚本。从这个模板
-新建仓库，照着下面把示例换成你的应用。
+这个仓库把 [Stirling-PDF](https://stirling.com)（主体 MIT，`app/proprietary/`、`engine/` 等目录另有许可，见 [NOTICE](NOTICE)）
+做成插件：60 多个 PDF 工具（合并、拆分、压缩、转换、OCR、签名、水印等），全部在本机处理，简体中文 OCR 开箱即用。登录走核心的
+身份提供方（OIDC，上游免费版支持），打开网页自动跳转，主人的账号就是管理员。文件只在处理时经过插件，不挂共享文件夹，
+也不申请出网；上游的匿名统计（PostHog/Scarf）已关闭。
+
+## 图标来源与许可
+
+`icon.svg` 用 Stirling-PDF 官方标志，未改路径和颜色，仅加同色方底消除圆角透明；来源、版权、处理方式、上游许可结构和商标说明见 [NOTICE](NOTICE)。
 
 ## 准备
 
@@ -40,7 +46,7 @@ scripts/dev.sh install
 | 路径 | 内容 |
 | --- | --- |
 | `docker-compose.yml` | 插件本身：compose 加上 `x-wonton` 清单 |
-| `icon.svg`、`web/` | 清单和 compose 引用的文件：图标、交给容器的配置和网页 |
+| `icon.svg` | 清单引用的图标 |
 | `screenshots/` | 商店详情页里的截图 |
 | `scripts/check.sh` | 检查插件包，规则和安装时一样 |
 | `scripts/dev.sh` | 开发环境：起一套云吞，装、重装、卸载插件，看日志 |

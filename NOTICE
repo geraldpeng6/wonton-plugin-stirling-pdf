@@ -1,14 +1,39 @@
-图标
-====
+Stirling-PDF 标志
+=================
 
-`icon.svg` 为本仓库原创，按插件规范的线条风格手写，未用图片模型生成。从模板新建的插件换成自己的图标时，这里按实际情况重写。
+图标：Stirling-PDF
+来源：https://github.com/Stirling-Tools/Stirling-PDF/blob/3b4c202890f7c21726424deded3f5aaee5090846/docs/stirling.svg
+版权：Copyright (c) 2025 Stirling PDF Inc.
+处理：官方 SVG 路径和颜色原样保留，仅在最底层加一个同色（#8E3131）方底，消除官方圆角的透明角，满足图标满幅要求。
 
-许可证
-------
+上游许可证
+==========
 
+Stirling-PDF 采用「MIT 为主、部分目录例外」的许可结构（https://github.com/Stirling-Tools/Stirling-PDF/blob/main/LICENSE）：
 MIT License
 
-Copyright (c) 2026 Wonton plugin authors
+Copyright (c) 2025 Stirling PDF Inc.
+
+Portions of this software are licensed as follows:
+
+* All content that resides under the "app/proprietary/" directory of this repository,
+if that directory exists, is licensed under the license defined in "app/proprietary/LICENSE".
+* All content that resides under the "app/saas/" directory of this repository,
+if that directory exists, is licensed under the license defined in "app/saas/LICENSE".
+* All content that resides under the "engine/" directory of this repository,
+if that directory exists, is licensed under the license defined in "engine/LICENSE".
+* All content that resides under the "frontend/src/editor/proprietary/" directory of this repository,
+if that directory exists, is licensed under the license defined in "frontend/src/editor/proprietary/LICENSE".
+* All content that resides under the "frontend/src/editor/desktop/" directory of this repository,
+if that directory exists, is licensed under the license defined in "frontend/src/editor/desktop/LICENSE".
+* All content that resides under the "frontend/src/editor/saas/" directory of this repository,
+if that directory exists, is licensed under the license defined in "frontend/src/editor/saas/LICENSE".
+* All content that resides under the "frontend/src/editor/cloud/" directory of this repository,
+if that directory exists, is licensed under the license defined in "frontend/src/editor/cloud/LICENSE".
+* All content that resides under the "frontend/src/processor/" directory of this repository,
+if that directory exists, is licensed under the license defined in "frontend/src/processor/LICENSE".
+* Content outside of the above mentioned directories or restrictions above is
+available under the MIT License as defined below.
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
@@ -27,3 +52,18 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
+
+镜像里带的专有部分
+==================
+
+本插件用的官方镜像 stirlingtools/stirling-pdf:3.2.2 以 STIRLING_FLAVOR=proprietary 构建，
+含 app/proprietary/（登录、SSO、用户管理等安全模块）。这些代码随镜像分发但不是 MIT；
+不激活许可证密钥时，应用按免费版（Free plan）运行：全部 PDF 工具、REST API、OAuth2/OIDC
+单点登录可用，5 个用户上限；Team/Enterprise 功能（外接数据库、SAML、审计日志、集群等）
+在应用里保持锁定。见 https://docs.stirlingpdf.com/Server/Licensing/Plans-and-Licences/ 。
+
+商标
+====
+
+Stirling-PDF 名称和标志归 Stirling PDF Inc. 所有。这里只用它们标识本插件集成的应用，不表示与
+上游存在官方合作、隶属关系或获得其背书。软件许可证不授予商标权。
