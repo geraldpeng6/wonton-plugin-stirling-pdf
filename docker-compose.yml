@@ -7,7 +7,15 @@ services:
   init:
     image: &image stirlingtools/stirling-pdf:3.2.2@sha256:c6872dd056b0046a14c5de1e9970283e7f1e1ff685bb08090c6b37a231127d31
     user: "0:0"
-    entrypoint: ["/bin/sh", "-c", "chown -R 1000:1000 /configs /storage"]
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        chown -R 1000:1000 /configs /storage
+        # 应用首次启动会把带默认值的 settings.yml 写进 /configs 并从此以它为准，环境变量
+        # DOCKER_ENABLE_SECURITY=false 压不住（实测 security profile 恒开、预建 admin 账号）。
+        # 关登录要写在应用不覆盖的 custom_settings.yml 里：没有账号体系，网关是唯一的门。
+        [ -s /configs/custom_settings.yml ] || printf 'security:\n  enableLogin: false\n' > /configs/custom_settings.yml
     volumes:
       - ${WONTON_APP_DATA}/configs:/configs
       - ${WONTON_APP_DATA}/storage:/storage
@@ -21,24 +29,10 @@ services:
         condition: service_completed_successfully
     environment:
       TZ: ${TZ}
-      # 登录交给核心的身份提供方（webui.sso: oidc）：打开网页自动跳到云吞登录，回插件网页时已是登录态。
-      # 不开本地登录页（loginMethod=oauth2），初始管理员账号的密码只在核心密钥库里，没人用密码登。
-      DOCKER_ENABLE_SECURITY: "true"
-      SECURITY_ENABLELOGIN: "true"
-      SECURITY_LOGINMETHOD: oauth2
-      SECURITY_SSOAUTOLOGIN: "true"
-      SECURITY_OAUTH2_ENABLED: "true"
-      SECURITY_OAUTH2_PROVIDER: wonton
-      SECURITY_OAUTH2_ISSUER: ${WONTON_OIDC_ISSUER}
-      SECURITY_OAUTH2_CLIENTID: ${WONTON_OIDC_CLIENT_ID}
-      SECURITY_OAUTH2_CLIENTSECRET: ${WONTON_OIDC_CLIENT_SECRET}
-      SECURITY_OAUTH2_SCOPES: "openid, profile, email"
-      SECURITY_OAUTH2_USEASUSERNAME: preferred_username
-      SECURITY_OAUTH2_AUTOCREATEUSER: "true"
-      # 预建和管理员：用户名用注入的主人用户名，首次 OIDC 登录按 preferred_username 匹配到它并
-      # 迁移成 SSO 账号，主人直接是管理员。没有它上游会用 admin/stirling 默认账号。
-      SECURITY_INITIALLOGIN_USERNAME: ${WONTON_OWNER_NAME}
-      SECURITY_INITIALLOGIN_PASSWORD: ${WONTON_SECRET_INITIAL_PASSWORD}
+      # 应用自己的登录用 custom_settings.yml 关掉（见 init 服务的说明）：网页始终在网关
+      # 登录后面，打开就能用。上游 OIDC 虽然免费，但无法用配置把主人配成管理员（应用拒绝
+      # 同名密码账号走 SSO 登录，自动建的用户固定是 USER），所以不开应用登录。
+      DOCKER_ENABLE_SECURITY: "false"
       # 界面默认中文；关闭统计（PostHog/Scarf）和首次启动的统计询问；搜索屏蔽保持默认。
       # 新版本检查是应用发起的外连，插件不出网，关掉（更新看商店或上游仓库）。
       SYSTEM_DEFAULTLOCALE: zh-CN
@@ -84,17 +78,15 @@ x-wonton:
       60 多个 PDF 工具：合并、拆分、压缩、加密码、去密码、转图片、图片转 PDF、Office 互转、OCR 文字识别、
       页面整理、水印、签名、元数据编辑等，全部在本机处理。
 
-      中文 OCR 开箱即用（内置简体中文语言包）。登录用云吞账号，打开即进主界面。免费版含全部 PDF 工具
-      和 OIDC 单点登录；付费版独有的功能（外接数据库、SAML、审计日志、集群）不可用。
+      中文 OCR 开箱即用（内置简体中文语言包）。应用不另设账号，打开网页登录云吞后直接用。
 
       处理的文件只存在插件数据目录的临时空间里，完成即取走，不申请出网。
     en: |
       60+ PDF tools: merge, split, compress, encrypt, decrypt, convert to images, images to PDF,
       Office conversion, OCR, page organizer, watermark, signing, metadata editing and more, all processed locally.
 
-      Chinese OCR works out of the box (Simplified Chinese language pack included). Sign-in uses your
-      Wonton account. The free tier includes all PDF tools and OIDC single sign-on; paid-only features
-      (external database, SAML, audit logging, clustering) are unavailable.
+      Chinese OCR works out of the box (Simplified Chinese language pack included). The app keeps
+      no accounts of its own — sign in to Wonton and you are in.
 
       Processed files only touch the plugin's own storage and are gone once you download them. No internet permission is requested.
   release_notes: { zh: 第一版。, en: First release. }
@@ -106,16 +98,4 @@ x-wonton:
   webui:
     service: app
     port: 8080
-    # 打开网页跳到核心的身份提供方（Ory Hydra），回插件网页时已是登录态；用户名来自
-    # OIDC 的 preferred_username，与注入的 WONTON_OWNER_NAME 同值。
-    sso: oidc
-    oidc:
-      # Spring Security 的 OIDC 回调路径（provider 名用 SECURITY_OAUTH2_PROVIDER=wonton）。
-      redirect_paths: [/login/oauth2/code/wonton]
-      token_endpoint_auth_method: client_secret_basic
-  secrets:
-    initial_password:
-      generate: { bytes: 32 }
-  permissions:
-    # 初始管理员账号用注入的用户名建（README 第 7 步：拿用户名建系统账号要申请 owner.identity）。
-    - owner.identity
+  permissions: []
