@@ -7,9 +7,10 @@ services:
   init:
     image: &image stirlingtools/stirling-pdf:3.2.2@sha256:c6872dd056b0046a14c5de1e9970283e7f1e1ff685bb08090c6b37a231127d31
     user: "0:0"
-    entrypoint: ["/bin/sh", "-c", "chown -R 1000:1000 /configs"]
+    entrypoint: ["/bin/sh", "-c", "chown -R 1000:1000 /configs /storage"]
     volumes:
       - ${WONTON_APP_DATA}/configs:/configs
+      - ${WONTON_APP_DATA}/storage:/storage
     network_mode: none
     restart: "no"
 
@@ -39,13 +40,17 @@ services:
       SECURITY_INITIALLOGIN_USERNAME: ${WONTON_OWNER_NAME}
       SECURITY_INITIALLOGIN_PASSWORD: ${WONTON_SECRET_INITIAL_PASSWORD}
       # 界面默认中文；关闭统计（PostHog/Scarf）和首次启动的统计询问；搜索屏蔽保持默认。
+      # 新版本检查是应用发起的外连，插件不出网，关掉（更新看商店或上游仓库）。
       SYSTEM_DEFAULTLOCALE: zh-CN
       SYSTEM_ENABLEANALYTICS: "false"
       SYSTEM_GOOGLEVISIBILITY: "false"
+      SYSTEM_SHOWUPDATE: "false"
       SHOW_SURVEY: "false"
     volumes:
-      # 用户库（H2 数据库）、设置和堆转储都在 /configs，官方文档要求挂卷否则容器重建即丢。
+      # 用户库（H2 数据库）、设置和堆转储在 /configs，处理中的文件在 /storage，官方都要求挂卷，
+      # 否则容器重建即丢。
       - ${WONTON_APP_DATA}/configs:/configs
+      - ${WONTON_APP_DATA}/storage:/storage
     healthcheck:
       # 上游镜像自带的健康检查端点。
       test: ["CMD-SHELL", "curl -fs --max-time 10 http://127.0.0.1:8080/api/v1/info/status"]

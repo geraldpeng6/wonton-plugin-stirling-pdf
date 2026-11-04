@@ -57,10 +57,12 @@ SOFTWARE.
 ==================
 
 本插件用的官方镜像 stirlingtools/stirling-pdf:3.2.2 以 STIRLING_FLAVOR=proprietary 构建，
-含 app/proprietary/（登录、SSO、用户管理等安全模块）。这些代码随镜像分发但不是 MIT；
-不激活许可证密钥时，应用按免费版（Free plan）运行：全部 PDF 工具、REST API、OAuth2/OIDC
-单点登录可用，5 个用户上限；Team/Enterprise 功能（外接数据库、SAML、审计日志、集群等）
-在应用里保持锁定。见 https://docs.stirlingpdf.com/Server/Licensing/Plans-and-Licences/ 。
+含 app/proprietary/、engine/（登录、SSO、用户管理等安全模块）。这些目录按上游的
+Stirling PDF User License（app/proprietary/LICENSE）许可：上游写明"Production use of the
+Stirling PDF Software is only permitted with a valid Stirling PDF User License"，实际由
+应用内免费版（Free plan）运行：全部 PDF 工具、REST API、OAuth2/OIDC 单点登录可用，
+5 个用户上限；Team/Enterprise 功能（外接数据库、SAML、审计日志、集群等）在应用里保持
+锁定。见 https://docs.stirlingpdf.com/Server/Licensing/Plans-and-Licences/ 。
 
 商标
 ====
