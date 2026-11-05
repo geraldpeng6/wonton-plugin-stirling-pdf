@@ -1,57 +1,114 @@
-# 示例插件：nginx 显示一个网页，向登录的人问好。照着 README 的“写插件”换成你的应用。
-services:
-  web:
-    # 镜像按摘要固定（多架构镜像写清单列表的摘要），标签只给人看。
-    image: nginx:1.30.6-alpine@sha256:0e52bd054126cdc040b1276c0af347aeb02a41b9cfe305d6094767ac30e97949
-    # 包里的文件经 configs 交给容器（核心在启动前写进去），不能用卷挂载。
-    configs:
-      - source: site
-        target: /etc/nginx/conf.d/default.conf
-      - source: page
-        target: /usr/share/nginx/html/index.html
-    healthcheck:
-      test: ["CMD", "wget", "-q", "-O", "/dev/null", "http://127.0.0.1/healthz"]
-      interval: 30s
-      timeout: 5s
-      start_period: 30s
-      start_interval: 1s
+name: stirling-pdf
 
-configs:
-  site:
-    file: web/default.conf
-  page:
-    file: web/index.html
+services:
+  # Stirling 以镜像里固定的 uid 1000（stirlingpdfuser）运行：容器以 root 起来后由上游入口脚本
+  # setpriv 降权，compose 不写 user。核心对 root 启动的服务把数据目录交给 PUID:PGID，
+  # 宿主 PUID 不是 1000 时应用就写不了；这里统一交给 1000，每次创建容器跑一遍，幂等。
+  init:
+    image: &image stirlingtools/stirling-pdf:3.2.2@sha256:c6872dd056b0046a14c5de1e9970283e7f1e1ff685bb08090c6b37a231127d31
+    user: "0:0"
+    entrypoint:
+      - /bin/sh
+      - -c
+      - |
+        chown -R 1000:1000 /configs /storage
+        # 应用首次启动会把带默认值的 settings.yml 写进 /configs 并从此以它为准，环境变量
+        # DOCKER_ENABLE_SECURITY=false 压不住（实测 security profile 恒开、预建 admin 账号）。
+        # 关登录要写在应用不覆盖的 custom_settings.yml 里：没有账号体系，网关是唯一的门。
+        [ -s /configs/custom_settings.yml ] || printf 'security:\n  enableLogin: false\n' > /configs/custom_settings.yml
+    volumes:
+      - ${WONTON_APP_DATA}/configs:/configs
+      - ${WONTON_APP_DATA}/storage:/storage
+    network_mode: none
+    restart: "no"
+
+  app:
+    image: *image
+    depends_on:
+      init:
+        condition: service_completed_successfully
+    environment:
+      TZ: ${TZ}
+      # 应用自己的登录用 custom_settings.yml 关掉（见 init 服务的说明）：网页始终在网关
+      # 登录后面，打开就能用。上游 OIDC 虽然免费，但无法用配置把用户的身份配成管理员（应用拒绝
+      # 同名密码账号走 SSO 登录，自动建的用户固定是 USER），所以不开应用登录。
+      DOCKER_ENABLE_SECURITY: "false"
+      # 登录关了，但安全模块仍会预建管理员；不指定时上游用写死的 admin/stirling，经
+      # /api/v1/auth/login 仍可登成 ROLE_ADMIN（实测）。这里用核心生成的密码预建同名账号，
+      # 默认口令失效；密码无人使用，只存在核心密钥库。
+      SECURITY_INITIALLOGIN_USERNAME: admin
+      SECURITY_INITIALLOGIN_PASSWORD: ${WONTON_SECRET_ADMIN_PASSWORD}
+      # 界面默认中文；关闭统计（PostHog/Scarf）和首次启动的统计询问；搜索屏蔽保持默认。
+      # 新版本检查是应用发起的外连，插件不出网，关掉（更新看商店或上游仓库）。
+      SYSTEM_DEFAULTLOCALE: zh-CN
+      SYSTEM_ENABLEANALYTICS: "false"
+      SYSTEM_GOOGLEVISIBILITY: "false"
+      SYSTEM_SHOWUPDATE: "false"
+      SHOW_SURVEY: "false"
+    volumes:
+      # 用户库（H2 数据库）、设置和堆转储在 /configs，处理中的文件在 /storage，官方都要求挂卷，
+      # 否则容器重建即丢。
+      - ${WONTON_APP_DATA}/configs:/configs
+      - ${WONTON_APP_DATA}/storage:/storage
+    healthcheck:
+      # 上游镜像自带的健康检查端点。
+      test: ["CMD-SHELL", "curl -fs --max-time 10 http://127.0.0.1:8080/api/v1/info/status"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+      start_period: 120s
+      start_interval: 2s
 
 x-wonton:
   spec: "0.4"
-  # 换成你自己的：反向域名形式，装上以后不能改。
-  id: app.example.hello
+  id: com.stirlingtools.stirling-pdf
   version: 0.1.0
   kind: app
-  title: { zh: 你好, en: Hello }
-  description: { zh: 向登录的人问好的示例网页, en: An example page that greets whoever is signed in }
+  title: { zh: Stirling-PDF, en: Stirling-PDF }
+  description:
+    zh: "本地 PDF 工具箱：合并、拆分、压缩、转换、OCR，文件不出你的机器"
+    en: "Local PDF toolbox: merge, split, compress, convert and OCR, files never leave your machine"
   icon: icon.svg
   notices: [NOTICE]
-  category: tools
-  screenshots: [screenshots/home.png]
-  author: { name: Example }
-  homepage: https://nginx.org
-  # 应用（这里是 nginx）的许可证；插件包自己的许可证写在仓库的 LICENSE 里。
-  license: BSD-2-Clause
-  tags: [示例, example]
+  screenshots: [screenshots/phone.png]
+  author: { name: geraldpeng6, url: https://github.com/geraldpeng6 }
+  homepage: https://stirling.com
+  # 应用主体 MIT；镜像按 STIRLING_FLAVOR=proprietary 构建，app/proprietary/、engine/ 是
+  # Stirling PDF User License（免费版 5 用户上限），见 NOTICE。
+  license: MIT AND LicenseRef-Stirling-PDF-User-License
+  tags:
+    zh: [PDF, 文档, 工具]
+    en: [PDF, Documents, Tools]
   about:
     zh: |
-      插件模板里的示例：网关认出主人后，经请求头把用户名交给应用，网页上就是“你好，<用户名>”。
+      60 多个 PDF 工具：合并、拆分、压缩、加密码、去密码、转图片、图片转 PDF、Office 互转、OCR 文字识别、
+      页面整理、水印、签名、元数据编辑等，全部在本机处理。
+
+      中文 OCR 开箱即用（内置简体中文语言包）。应用不另设账号，打开网页登录云吞后直接用。
+      登录、用户管理等模块按上游的专有许可发布，免费版即可用（5 个用户上限）。
+
+      处理的文件只在处理过程中临时存放，完成即取走，重装不保留；不申请出网。
     en: |
-      The example from the plugin template: once the gateway recognises the owner, it passes the user name to
-      the app in a request header, and the page says hello to them.
+      60+ PDF tools: merge, split, compress, encrypt, decrypt, convert to images, images to PDF,
+      Office conversion, OCR, page organizer, watermark, signing, metadata editing and more, all processed locally.
+
+      Chinese OCR works out of the box (Simplified Chinese language pack included). The app keeps
+      no accounts of its own — sign in to Wonton and you are in. Sign-in, user management and
+      similar modules ship under the upstream proprietary licence; the free tier is fully usable
+      (5-user limit).
+
+      Processed files are temporary while you work — download them when you're done; they do not
+      survive reinstalls. No internet permission is requested.
   release_notes: { zh: 第一版。, en: First release. }
+  # 镜像支持 amd64 和 arm64（docker buildx imagetools inspect）；上游未写最低内存，JVM 按容器内存自动调，
+  # OCR 加 LibreOffice 转换按 2G 报。
+  requirements:
+    arch: [amd64, arm64]
+    memory: 2G
   webui:
-    service: web
-    port: 80
-    # 应用不认 OIDC 时，由网关在请求上加上用户名（README 的“网页入口和登录”）。
-    sso: proxy
-    proxy:
-      headers:
-        Remote-User: "{user}"
+    service: app
+    port: 8080
+  secrets:
+    admin_password:
+      generate: { bytes: 32 }
   permissions: []
