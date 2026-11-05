@@ -73,8 +73,9 @@ x-wonton:
   screenshots: [screenshots/phone.png]
   author: { name: geraldpeng6, url: https://github.com/geraldpeng6 }
   homepage: https://stirling.com
-  # 应用（Stirling-PDF）主体是 MIT；app/proprietary/、engine/ 等目录另有许可，见 NOTICE。
-  license: MIT
+  # 应用主体 MIT；镜像按 STIRLING_FLAVOR=proprietary 构建，app/proprietary/、engine/ 是
+  # Stirling PDF User License（免费版 5 用户上限），见 NOTICE。
+  license: MIT AND LicenseRef-Stirling-PDF-User-License
   tags:
     zh: [PDF, 文档, 工具]
     en: [PDF, Documents, Tools]
@@ -84,6 +85,7 @@ x-wonton:
       页面整理、水印、签名、元数据编辑等，全部在本机处理。
 
       中文 OCR 开箱即用（内置简体中文语言包）。应用不另设账号，打开网页登录云吞后直接用。
+      登录、用户管理等模块按上游的专有许可发布，免费版即可用（5 个用户上限）。
 
       处理的文件只在处理过程中临时存放，完成即取走，重装不保留；不申请出网。
     en: |
@@ -91,7 +93,9 @@ x-wonton:
       Office conversion, OCR, page organizer, watermark, signing, metadata editing and more, all processed locally.
 
       Chinese OCR works out of the box (Simplified Chinese language pack included). The app keeps
-      no accounts of its own — sign in to Wonton and you are in.
+      no accounts of its own — sign in to Wonton and you are in. Sign-in, user management and
+      similar modules ship under the upstream proprietary licence; the free tier is fully usable
+      (5-user limit).
 
       Processed files are temporary while you work — download them when you're done; they do not
       survive reinstalls. No internet permission is requested.
