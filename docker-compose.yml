@@ -5,7 +5,7 @@ services:
   # setpriv 降权，compose 不写 user。核心对 root 启动的服务把数据目录交给 PUID:PGID，
   # 宿主 PUID 不是 1000 时应用就写不了；这里统一交给 1000，每次创建容器跑一遍，幂等。
   init:
-    image: stirlingtools/stirling-pdf:3.2.2@sha256:c6872dd056b0046a14c5de1e9970283e7f1e1ff685bb08090c6b37a231127d31
+    image: stirlingtools/stirling-pdf:3.3.0@sha256:ed7b1775c6706b5e5ea24fa6155f078eff1027bd35a17d21834e4407036025e6
     user: "0:0"
     entrypoint:
       - /bin/sh
@@ -23,7 +23,7 @@ services:
     restart: "no"
 
   app:
-    image: stirlingtools/stirling-pdf:3.2.2@sha256:c6872dd056b0046a14c5de1e9970283e7f1e1ff685bb08090c6b37a231127d31
+    image: stirlingtools/stirling-pdf:3.3.0@sha256:ed7b1775c6706b5e5ea24fa6155f078eff1027bd35a17d21834e4407036025e6
     depends_on:
       init:
         condition: service_completed_successfully
@@ -62,7 +62,7 @@ services:
 x-wonton:
   spec: "0.4"
   id: com.stirlingtools.stirling-pdf
-  version: 0.1.0
+  version: 0.1.1
   kind: app
   title: { zh: Stirling-PDF, en: Stirling-PDF }
   description:
@@ -99,7 +99,9 @@ x-wonton:
 
       Processed files are temporary while you work — download them when you're done; they do not
       survive reinstalls. No internet permission is requested.
-  release_notes: { zh: 第一版。, en: First release. }
+  release_notes:
+    zh: "上游 Stirling-PDF 升到 3.3.0：缺陷修复与安全加固，新增测试版 Office 转换引擎；数据和设置原样保留。"
+    en: "Upstream Stirling-PDF bumped to 3.3.0: bug fixes, security hardening and a beta Office conversion engine; data and settings kept as-is."
   # 镜像支持 amd64 和 arm64（docker buildx imagetools inspect）；上游未写最低内存，JVM 按容器内存自动调，
   # OCR 加 LibreOffice 转换按 2G 报。
   requirements:
