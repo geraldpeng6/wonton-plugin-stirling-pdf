@@ -5,7 +5,7 @@ services:
   # setpriv 降权，compose 不写 user。核心对 root 启动的服务把数据目录交给 PUID:PGID，
   # 宿主 PUID 不是 1000 时应用就写不了；这里统一交给 1000，每次创建容器跑一遍，幂等。
   init:
-    image: &image stirlingtools/stirling-pdf:3.2.2@sha256:c6872dd056b0046a14c5de1e9970283e7f1e1ff685bb08090c6b37a231127d31
+    image: stirlingtools/stirling-pdf:3.2.2@sha256:c6872dd056b0046a14c5de1e9970283e7f1e1ff685bb08090c6b37a231127d31
     user: "0:0"
     entrypoint:
       - /bin/sh
@@ -23,7 +23,7 @@ services:
     restart: "no"
 
   app:
-    image: *image
+    image: stirlingtools/stirling-pdf:3.2.2@sha256:c6872dd056b0046a14c5de1e9970283e7f1e1ff685bb08090c6b37a231127d31
     depends_on:
       init:
         condition: service_completed_successfully
