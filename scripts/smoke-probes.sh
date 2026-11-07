@@ -1,4 +1,4 @@
-# shellcheck shell=bash
+# shellcheck shell=bash disable=SC2034
 # scripts/smoke.sh 的一项一项探测，跟着插件走。没写的项会 FAIL 并给出写法，不会默认放行。
 #
 # 页面：web_assert 从标准输入读页面，命中的确是应用的真实页面时返回 0。
@@ -7,6 +7,11 @@
 # 工具：MCP_TOOL 写一个只读工具名（可带插件前缀），MCP_ARGS 是 JSON 参数；mcp_assert 从标准输入读调用结果。
 #       要断言多个工具时改成写 mcp_check；调用前要备数据时写 before_mcp。
 # 装之前要准备（如先配出口代理）：写 before_install。
+
+# 保数据：应用登录被 custom_settings.yml 关掉（见 compose 的 init 服务说明），游客身份没有可写的
+# 用户数据——保存到服务器等入口只对登录用户开放，处理的文件也是临时的（about 已如实写明）。
+# 没有要核对的用户数据，DATA_NA=1。
+DATA_NA=1
 
 web_assert() { grep -q '你好'; }   # 示例页的标题
 
