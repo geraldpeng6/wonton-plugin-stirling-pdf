@@ -10,8 +10,7 @@
 
 # 保数据：应用登录被 custom_settings.yml 关掉（见 compose 的 init 服务说明），游客身份没有可写的
 # 用户数据——保存到服务器等入口只对登录用户开放，处理的文件也是临时的（about 已如实写明）。
-# 没有要核对的用户数据，DATA_NA=1。
-DATA_NA=1
+# 没有可写的用户数据，钩子改为核对数据卷里的标记文件（见文末）。
 
 web_assert() { grep -q '你好'; }   # 示例页的标题
 
@@ -19,4 +18,37 @@ identity_check() { # 页面回显的就是网关注入的用户名
   local page
   page="$(dweb /)" || { echo "页面失败：$page"; return 1; }
   grep -qF "你好，$SMOKE_OWNER" <<<"$page" || { echo "页面没回显用户 $SMOKE_OWNER：$(head -c 120 <<<"$page")"; return 1; }
+}
+
+# 保数据：应用登录被 custom_settings.yml 关掉（见 compose 的 init 服务说明），登录接口虽能发令牌，
+# 但登录关闭时请求仍是匿名的（实测 3.3.0：Bearer 和会话 Cookie 访问都回 401），应用 API 写不了用户数据。
+# 数据卷 `/configs` 里是用户库（H2）、设置和 custom_settings.yml，升级把它弄丢等于把插件设置改回去；
+# 这里以应用用户（1000）在 /configs 写一个带随机标记的文件，升级/重装后读回核对。
+_stirling_container() {
+  local inst="${SMOKE_INSTANCE:-}"
+  # data_write 在装旧 tag 的阶段跑，主流程可能还没导出 SMOKE_INSTANCE；SMOKE_BASE 那时已有——实例名是其主机名前缀。
+  if [[ -z "$inst" && -n "${SMOKE_BASE:-}" ]]; then
+    inst="${SMOKE_BASE#http://}"; inst="${inst%%.*}"
+  fi
+  [[ -n "$inst" ]] || { echo "拿不到实例名（SMOKE_INSTANCE/SMOKE_BASE 都没有）" >&2; return 1; }
+  printf 'wonton-%s--com-stirlingtools-stirling-pdf--app' "$inst"
+}
+
+data_write() {
+  local marker container
+  [[ -n "${SMOKE_STATE:-}" ]] || { echo "SMOKE_STATE 没设"; return 1; }
+  marker="wonton-smoke-$(od -An -N4 -tx4 /dev/urandom | tr -d ' \n')"
+  container="$(_stirling_container)" || return 1
+  docker exec -u 1000:1000 "$container" sh -c 'printf %s "$1" > "/configs/$2"' sh "$marker" "$marker" ||
+    { echo "写不进 /configs（容器 $container）"; return 1; }
+  printf '%s' "$marker" >"$SMOKE_STATE"
+}
+
+data_check() {
+  local marker container out
+  marker="$(cat "$SMOKE_STATE")" || { echo "读不到 $SMOKE_STATE"; return 1; }
+  container="$(_stirling_container)" || return 1
+  out="$(docker exec -u 1000:1000 "$container" sh -c 'cat "/configs/$1" 2>&1' sh "$marker")" ||
+    { echo "标记文件读不回来（数据卷丢了？）：$out"; return 1; }
+  [[ "$out" == "$marker" ]] || { echo "标记对不上：期待 $marker，看到 $out"; return 1; }
 }
