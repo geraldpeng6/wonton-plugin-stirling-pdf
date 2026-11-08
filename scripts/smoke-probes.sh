@@ -34,6 +34,10 @@ _stirling_container() {
   docker ps --format '{{.Names}}' "${args[@]}" | head -1
 }
 
+marker_file() { # SMOKE_STATE 在套件里是状态目录（e2e 传的是标记文件本身），标记放对应路径
+  if [[ -d "$SMOKE_STATE" ]]; then printf '%s' "$SMOKE_STATE/stirling-marker"; else printf '%s' "${SMOKE_STATE}.marker"; fi
+}
+
 data_write() {
   local marker container
   [[ -n "${SMOKE_STATE:-}" ]] || { echo "SMOKE_STATE 没设"; return 1; }
@@ -42,12 +46,12 @@ data_write() {
   [[ -n "$container" ]] || { echo "找不到应用容器（wonton.instance 标签）"; return 1; }
   docker exec -u 1000:1000 "$container" sh -c 'printf %s "$1" > "/configs/$2"' sh "$marker" "$marker" ||
     { echo "写不进 /configs（容器 $container）"; return 1; }
-  printf '%s' "$marker" >"$SMOKE_STATE"
+  printf '%s' "$marker" >"$(marker_file)"
 }
 
 data_check() {
   local marker container out
-  marker="$(cat "$SMOKE_STATE")" || { echo "读不到 $SMOKE_STATE"; return 1; }
+  marker="$(cat "$(marker_file)")" || { echo "读不到标记文件"; return 1; }
   container="$(_stirling_container)"
   [[ -n "$container" ]] || { echo "找不到应用容器（wonton.instance 标签）"; return 1; }
   out="$(docker exec -u 1000:1000 "$container" sh -c 'cat "/configs/$1" 2>&1' sh "$marker")" ||
