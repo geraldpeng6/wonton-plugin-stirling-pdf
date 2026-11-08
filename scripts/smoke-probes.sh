@@ -12,13 +12,13 @@
 # 用户数据——保存到服务器等入口只对登录用户开放，处理的文件也是临时的（about 已如实写明）。
 # 没有可写的用户数据，钩子改为核对数据卷里的标记文件（见文末）。
 
-web_assert() { grep -q '你好'; }   # 示例页的标题
+web_assert() { grep -qi 'stirling'; }   # stdin：应用真实页面（SPA 首页，标题带 Stirling）
 
-identity_check() { # 页面回显的就是网关注入的用户名
-  local page
-  page="$(dweb /)" || { echo "页面失败：$page"; return 1; }
-  grep -qF "你好，$SMOKE_OWNER" <<<"$page" || { echo "页面没回显用户 $SMOKE_OWNER：$(head -c 120 <<<"$page")"; return 1; }
-}
+# 身份：应用登录被 custom_settings.yml 关掉（compose 的 init 服务说明），security profile 恒开、
+# 应用 API 对匿名请求一律 401（实测 3.3.0）——应用侧没有可断言的用户身份；主人能打开由 web_assert
+# 和网关对匿名请求的 401 证明。
+export IDENTITY_NA=1
+export SMOKE_NOTE="应用登录被 custom_settings.yml 关掉、应用 API 匿名一律 401，应用侧没有可断言的用户身份；主人会话能打开应用、网关拒绝匿名请求由网页项证明。"
 
 # 保数据：应用登录被 custom_settings.yml 关掉（见 compose 的 init 服务说明），登录接口虽能发令牌，
 # 但登录关闭时请求仍是匿名的（实测 3.3.0：Bearer 和会话 Cookie 访问都回 401），应用 API 写不了用户数据。
