@@ -56,7 +56,7 @@ SOFTWARE.
 镜像里带的专有部分
 ==================
 
-本插件用的官方镜像 stirlingtools/stirling-pdf:3.2.2 以 STIRLING_FLAVOR=proprietary 构建，
+本插件用的官方镜像 stirlingtools/stirling-pdf:3.3.0 以 STIRLING_FLAVOR=proprietary 构建，
 含 app/proprietary/、engine/（登录、SSO、用户管理等安全模块）。这些目录按上游的
 Stirling PDF User License（app/proprietary/LICENSE）许可：上游写明"Production use of the
 Stirling PDF Software is only permitted with a valid Stirling PDF User License"，实际由
