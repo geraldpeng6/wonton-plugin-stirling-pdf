@@ -7,6 +7,11 @@ services:
   init:
     image: stirlingtools/stirling-pdf:3.3.0@sha256:ed7b1775c6706b5e5ea24fa6155f078eff1027bd35a17d21834e4407036025e6
     user: "0:0"
+    environment:
+      # notify 权限注入的发信三变量；应用不读环境变量，由下面的脚本写进配置文件。
+      WONTON_SMTP_HOST: ${WONTON_SMTP_HOST:?}
+      WONTON_SMTP_PORT: ${WONTON_SMTP_PORT:?}
+      WONTON_MAIL_FROM: ${WONTON_MAIL_FROM:?}
     entrypoint:
       - /bin/sh
       - -c
@@ -14,8 +19,20 @@ services:
         chown -R 1000:1000 /configs /storage
         # 应用首次启动会把带默认值的 settings.yml 写进 /configs 并从此以它为准，环境变量
         # DOCKER_ENABLE_SECURITY=false 压不住（实测 security profile 恒开、预建 admin 账号）。
-        # 关登录要写在应用不覆盖的 custom_settings.yml 里：没有账号体系，网关是唯一的门。
-        [ -s /configs/custom_settings.yml ] || printf 'security:\n  enableLogin: false\n' > /configs/custom_settings.yml
+        # 关登录和发信配置都写在应用不覆盖的 custom_settings.yml 里（settings.yml 之后加载，
+        # 同名键以它为准）：没有账号体系，网关是唯一的门。每次创建容器按注入值重写一遍，
+        # 幂等，也把 mail 段补进 0.1.1 只写了 security 的旧文件。服务器不提供 STARTTLS，
+        # 明文 25 端口直连，不填用户名密码（应用在无凭据时自己关掉 SMTP AUTH）。
+        cat > /configs/custom_settings.yml <<EOF
+        security:
+          enableLogin: false
+        mail:
+          enabled: true
+          host: $$WONTON_SMTP_HOST
+          port: $$WONTON_SMTP_PORT
+          from: $$WONTON_MAIL_FROM
+          startTlsEnable: false
+        EOF
     volumes:
       - ${WONTON_APP_DATA}/configs:/configs
       - ${WONTON_APP_DATA}/storage:/storage
@@ -60,9 +77,9 @@ services:
       start_interval: 2s
 
 x-wonton:
-  spec: "0.4"
+  spec: "0.11"
   id: com.stirlingtools.stirling-pdf
-  version: 0.1.1
+  version: 0.2.0
   kind: app
   title: { zh: Stirling-PDF, en: Stirling-PDF }
   description:
@@ -88,6 +105,9 @@ x-wonton:
       登录、用户管理等模块按上游的专有许可发布，免费版即可用（5 个用户上限）。
 
       处理的文件只在处理过程中临时存放，完成即取走，重装不保留；不申请出网。
+
+      应用发的信（签名邀请、把文件发到邮箱）会出现在收件人的「Wonton」私聊里，收件人限家里人；
+      发给外部邮箱会发送失败，应用当场报错。
     en: |
       60+ PDF tools: merge, split, compress, encrypt, decrypt, convert to images, images to PDF,
       Office conversion, OCR, page organizer, watermark, signing, metadata editing and more, all processed locally.
@@ -99,9 +119,12 @@ x-wonton:
 
       Processed files are temporary while you work — download them when you're done; they do not
       survive reinstalls. No internet permission is requested.
+
+      Emails the app sends (signing invites, emailing a file) arrive in the recipient's Wonton
+      chat, household members only; sending to outside addresses fails on the spot.
   release_notes:
-    zh: "上游 Stirling-PDF 升到 3.3.0：缺陷修复与安全加固，新增测试版 Office 转换引擎；数据和设置原样保留。"
-    en: "Upstream Stirling-PDF bumped to 3.3.0: bug fixes, security hardening and a beta Office conversion engine; data and settings kept as-is."
+    zh: "接上云吞的内部邮箱：签名邀请、邮件发送等应用发的信会送进收件人的「Wonton」私聊；收件人限家里人，发外部地址会失败。"
+    en: "Connected to Wonton's internal mailbox: emails the app sends (signing invites, the email tool) arrive in the recipient's Wonton chat; recipients are limited to household members, external addresses fail."
   # 镜像支持 amd64 和 arm64（docker buildx imagetools inspect）；上游未写最低内存，JVM 按容器内存自动调，
   # OCR 加 LibreOffice 转换按 2G 报。
   requirements:
@@ -113,4 +136,4 @@ x-wonton:
   secrets:
     admin_password:
       generate: { bytes: 32 }
-  permissions: []
+  permissions: [notify]
