@@ -25,11 +25,17 @@ export SMOKE_NOTE="应用登录被 custom_settings.yml 关掉、应用 API 匿�
 # 数据卷 `/configs` 里是用户库（H2）、设置和 custom_settings.yml，升级把它弄丢等于把插件设置改回去；
 # 这里以应用用户（1000）在 /configs 写一个带随机标记的文件，升级/重装后读回核对。
 # 容器按核心打的标签找，不拼名字：data_write 在装旧 tag 的阶段跑，那时主流程还没导出 SMOKE_INSTANCE。
-_stirling_container() {
-  local inst="${SMOKE_INSTANCE:-}" args=(--filter label=wonton.plugin=com.stirlingtools.stirling-pdf --filter label=wonton.service=app)
+_stirling_container() { # 应用容器名按核心规则拼（wonton-<实例>--<slug 的连字符形>--app）；重装后的容器标签
+  # 曾在 61 的冒烟里匹配不到（附加检查挂在这里），名字查不到时再按标签兜底。
+  local inst="${SMOKE_INSTANCE:-}"
   if [[ -z "$inst" && -n "${SMOKE_BASE:-}" ]]; then
     inst="${SMOKE_BASE#http://}"; inst="${inst%%.*}"
   fi
+  if [[ -n "$inst" ]]; then
+    local name="wonton-${inst}--com-stirlingtools-stirling-pdf--app"
+    docker inspect "$name" >/dev/null 2>&1 && { printf '%s\n' "$name"; return 0; }
+  fi
+  local args=(--filter label=wonton.plugin=com.stirlingtools.stirling-pdf --filter label=wonton.service=app)
   [[ -z "$inst" ]] || args+=(--filter "label=wonton.instance=${inst//-/}")
   docker ps --format '{{.Names}}' "${args[@]}" | head -1
 }
@@ -61,9 +67,18 @@ data_check() {
 
 # ---------- 邮件（notify）：真发一封带附件的信，核对核心投进私聊（extra_check 由 e2e 冒烟跑） ----------
 
-core_container() { # 核心容器：和插件容器同一个 compose 项目（Mailpit 只在核心的私有网络里）
+core_container() { # 核心容器：名字按核心规则拼（wonton-<实例>--core），兜底走 compose 项目标签
+  local inst="${SMOKE_INSTANCE:-}"
+  if [[ -z "$inst" && -n "${SMOKE_BASE:-}" ]]; then
+    inst="${SMOKE_BASE#http://}"; inst="${inst%%.*}"
+  fi
+  if [[ -n "$inst" ]]; then
+    local name="wonton-${inst}--core"
+    docker inspect "$name" >/dev/null 2>&1 && { printf '%s\n' "$name"; return 0; }
+  fi
   local project
-  project="$(docker inspect "$(_stirling_container)" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)"
+  project="$(docker inspect "$(_stirling_container)" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)" ||
+    { echo "读不到插件容器的 compose 项目"; return 1; }
   [[ -n "$project" ]] || { echo "读不到插件容器的 compose 项目"; return 1; }
   docker ps --format '{{.Names}}' --filter "label=com.docker.compose.project=$project" |
     grep -E -- '--core$' | head -1
