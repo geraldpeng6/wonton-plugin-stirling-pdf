@@ -58,3 +58,81 @@ data_check() {
     { echo "标记文件读不回来（数据卷丢了？）：$out"; return 1; }
   [[ "$out" == "$marker" ]] || { echo "标记对不上：期待 $marker，看到 $out"; return 1; }
 }
+
+# ---------- 邮件（notify）：真发一封带附件的信，核对核心投进私聊（extra_check 由 e2e 冒烟跑） ----------
+
+core_container() { # 核心容器：和插件容器同一个 compose 项目（Mailpit 只在核心的私有网络里）
+  local project
+  project="$(docker inspect "$(_stirling_container)" --format '{{index .Config.Labels "com.docker.compose.project"}}' 2>/dev/null)"
+  [[ -n "$project" ]] || { echo "读不到插件容器的 compose 项目"; return 1; }
+  docker ps --format '{{.Names}}' --filter "label=com.docker.compose.project=$project" |
+    grep -E -- '--core$' | head -1
+}
+
+mailpit_messages() { # 经核心的网络栈读 Mailpit 收件箱 API（SMTP 25/HTTP 8025 都不发布到宿主）。
+  # API 要 Basic 认证（core:<密钥>，密钥在核心数据目录，核心的 mailbox 组件生成）。
+  local pwd
+  pwd="$(docker exec "$(core_container)" sh -c 'cat "$WONTON_DATA_DIR/core/mailpit/api-password"')" ||
+    { echo "读不到 Mailpit API 密钥"; return 1; }
+  docker run --rm --network "container:$(core_container)" curlimages/curl:8.23.0 --noproxy '*' -s \
+    -u "core:$pwd" "http://mailpit.wonton.internal:8025/api/v1/messages?limit=50"
+}
+
+_ours_in_mailpit() { # <owner 邮箱>：Stirling 发的、还没被核心取走的信
+  mailpit_messages | jq -r --arg f "com.stirlingtools.stirling-pdf@plugins.wonton.internal" --arg t "$1" '
+    [.messages[] | select((.From.Address == $f) and ([.To[].Address] | index($t)))] | length'
+}
+
+extra_check() { # 邮件专项：用应用的「把文件发到邮箱」接口（POST /api/v1/general/send-email，
+  # mail.enabled 才注册）给主人的内部邮箱发一封带附件的信，等它进 Mailpit、再等核心投进私聊后
+  # 取走；发给外部地址应用要报失败。
+  # 应用自己的登录被关掉（compose 的 init 服务说明），接口经网关用主人会话调（web_get 带 jar）。
+  local owner_email pdf out seen i code
+  [[ -n "${SMOKE_JAR:-}" && -n "${SMOKE_WEB_URL:-}" && -n "${SMOKE_OWNER:-}" ]] ||
+    { echo "缺冒烟变量：需要 SMOKE_JAR/SMOKE_WEB_URL/SMOKE_OWNER" >&2; return 1; }
+  # 主人的内部邮箱：规范固定 <用户名>@wonton.internal（冒烟工具按形状拼；应用发不了外部地址的信）。
+  # 应用自己的登录被关掉（compose 的 init 服务说明），接口经网关用主人会话调。附加检查跑在
+  # 主流程 web_login 之前，jar 是冷的：先自己走一遍核心令牌登录 + 应用网页跳转把会话建起来。
+  curl -sS --noproxy '*' -o /dev/null -b "$SMOKE_JAR" -c "$SMOKE_JAR" \
+    --data-urlencode "token=$SMOKE_TOKEN" "$SMOKE_BASE/_wonton/login" ||
+    { echo "主人令牌登录不了核心"; return 1; }
+  curl -sS --noproxy '*' -o /dev/null -L -b "$SMOKE_JAR" -c "$SMOKE_JAR" \
+    -H 'Accept: text/html' "$SMOKE_WEB_URL/" || { echo "走不通网关到应用的会话"; return 1; }
+  owner_email="$SMOKE_OWNER@wonton.internal"
+  pdf="$(mktemp /tmp/stirling-smoke-XXXXXX.pdf)"
+  printf '%%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\ntrailer<</Size 2/Root 1 0 R>>\n%%%%EOF\n' >"$pdf"
+  # 发送是 @Async 的：200 只说明受理，信要等几秒才进 Mailpit；出现后再等核心投走（投递成功才删）。
+  out="$(web_get /api/v1/general/send-email \
+    -F "fileInput=@$pdf;filename=wonton-smoke.pdf" -F "to=$owner_email" \
+    -F "subject=Wonton smoke" -F "body=wonton smoke attachment" -w '\n%{http_code}')" ||
+    { echo "send-email 请求失败：$out"; return 1; }
+  code="$(tail -1 <<<"$out")"
+  [[ "$code" == 2* ]] || { echo "send-email 没受理（$code）：$(head -c 300 <<<"$out")"; return 1; }
+  grep -qi 'sent successfully' <<<"$out" || { echo "应用没报发送成功：$(head -c 300 <<<"$out")"; return 1; }
+  echo "send-email 受理（$code），收件人 $owner_email"
+  seen=0
+  for i in {1..60}; do
+    sleep 5
+    out="$(_ours_in_mailpit "$owner_email")" || { echo "$out"; return 1; }
+    if [[ "$out" != 0 ]]; then seen=1; break; fi
+  done
+  [[ "$seen" == 1 ]] || { echo "等了 5 分钟没看到信进 Mailpit（异步发送没走到 SMTP？）"; return 1; }
+  echo "信进了 Mailpit"
+  for i in {1..24}; do
+    sleep 5
+    out="$(_ours_in_mailpit "$owner_email")" || { echo "$out"; return 1; }
+    [[ "$out" == 0 ]] && break
+    [[ "$i" == 24 ]] && { echo "等了 2 分钟信还在 Mailpit，核心没取走（投递失败？）"; return 1; }
+  done
+  echo "信已被核心投进收件人的 Wonton 私聊（Mailpit 里删了）"
+
+  # 外部收件人：核心在 SMTP 阶段 550 拒收，应用报 500 带失败原因
+  out="$(web_get /api/v1/general/send-email \
+    -F "fileInput=@$pdf;filename=wonton-smoke.pdf" -F "to=wonton-smoke-external@example.com" \
+    -F "subject=Wonton smoke external" -F "body=wonton smoke external" -w '\n%{http_code}' 2>&1)" || true
+  code="$(tail -1 <<<"$out")"
+  [[ "$code" == 2* ]] && { echo "发往外部地址竟然成功（$code）：$(head -c 300 <<<"$out")"; return 1; }
+  grep -q '550' <<<"$out" || { echo "外部收件人的失败不是 550 拒收（$code）：$(head -c 300 <<<"$out")"; return 1; }
+  echo "外部地址应用报失败（$code），核心 550 拒收"
+  rm -f "$pdf"
+}
