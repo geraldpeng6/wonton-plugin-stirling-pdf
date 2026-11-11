@@ -1,6 +1,6 @@
 # 云吞插件：Stirling-PDF
 
-开发流程见[插件开发指南](https://github.com/geraldpeng6/wonton-docs/blob/main/develop.md)。
+开发流程见[插件开发指南](https://github.com/wontonapp/wonton-docs/blob/main/develop.md)。
 
 这个仓库把 [Stirling-PDF](https://stirling.com)（主体 MIT，`app/proprietary/`、`engine/` 等目录另有许可，见 [NOTICE](NOTICE)）
 做成插件：60 多个 PDF 工具（合并、拆分、压缩、转换、OCR、签名、水印等），全部在本机处理，简体中文 OCR 开箱即用。应用自己的
