@@ -150,11 +150,24 @@ extra_check() { # 邮件专项：用应用的「把文件发到邮箱」接口�
   [[ "$code" == 2* ]] || { echo "send-email 没受理（$code）：$(head -c 300 <<<"$out")"; return 1; }
   grep -qi 'sent successfully' <<<"$out" || { echo "应用没报发送成功：$(head -c 300 <<<"$out")"; return 1; }
   echo "send-email 受理（$code），收件人 $owner_email"
+  # 核心的收信事件连接断开重连期间受理的信会丢（SMTP 250 但不投递、Mailpit 也没滞留，见底座的
+  # 问题）：第一次等 60 秒没到就再发一次，第二次给足 5 分钟。
   seen=0
-  for i in {1..60}; do
-    sleep 5
-    out="$(_delivered_after com.stirlingtools.stirling-pdf "$sent_at")" || { echo "$out"; return 1; }
-    if [[ "$out" != 0 ]]; then seen=1; break; fi
+  for attempt in 1 2; do
+    if [[ "$attempt" == 2 ]]; then
+      sent_at="$(date +%s%3N)"
+      out="$(web_get /api/v1/general/send-email \
+        -F "fileInput=@$pdf;filename=wonton-smoke.pdf" -F "to=$owner_email" \
+        -F "subject=Wonton smoke retry" -F "body=wonton smoke attachment" -w '\n%{http_code}')" ||
+        { echo "重试 send-email 请求失败：$out"; return 1; }
+      code="$(tail -1 <<<"$out")"
+      [[ "$code" == 2* ]] || { echo "重试 send-email 没受理（$code）：$(head -c 200 <<<"$out")"; return 1; }
+      echo "第二次 send-email 受理（$code）"
+      for i in {1..60}; do sleep 5; out="$(_delivered_after com.stirlingtools.stirling-pdf "$sent_at")" || { echo "$out"; return 1; }; [[ "$out" != 0 ]] && { seen=1; break; }; done
+    else
+      for i in {1..12}; do sleep 5; out="$(_delivered_after com.stirlingtools.stirling-pdf "$sent_at")" || { echo "$out"; return 1; }; [[ "$out" != 0 ]] && { seen=1; break; }; done
+    fi
+    [[ "$seen" == 1 ]] && break
   done
   if [[ "$seen" != 1 ]]; then
     echo "等了 5 分钟没看到信投进主人的 Wonton 私聊；邮件去向："
