@@ -99,13 +99,18 @@ _ours_in_mailpit() { # <owner 邮箱>：Stirling 发的、还没被核心取走�
     [.messages[] | select((.From.Address == $f) and ([.To[].Address] | index($t)))] | length'
 }
 
+_mailpit_summary() { # 失败取证：Mailpit 里现在有哪些信
+  mailpit_messages | jq -r '.messages[]? | "\(.From.Address) → \(.To | map(.Address) | join(","))｜\(.Subject)"' 2>/dev/null | head -5
+}
+
 wonton_chat_events() { # <条数>：核心投递事件的房间最近消息。核心实测亚秒取走信件（投完即删），
   # 在 Mailpit 里几乎抓不到中间态，投进主人 Wonton 私聊的房间事件才是权威证据。
   local mu room adm
   mu="$(docker exec "$(core_container)" printenv WONTON_MATRIX_URL)"
-  room="$(docker exec "$(core_container)" sh -c 'cat "$WONTON_DATA_DIR/core/matrix-notice-room"')" ||
-    { echo "读不到通知房间 id"; return 1; }
-  adm="$(docker exec "$(core_container)" sh -c 'cat "$WONTON_DATA_DIR/core/matrix-admin-token"')" ||
+  # 通知房间是第一封信投进私聊时才建的：还没投过时按 0 条算，不当错误（读房间/令牌失败也回空）。
+  room="$(docker exec "$(core_container)" sh -c 'cat "$WONTON_DATA_DIR/core/matrix-notice-room" 2>/dev/null')" ||
+    { echo '{"chunk":[]}'; return 0; }
+  adm="$(docker exec "$(core_container)" sh -c 'cat "$WONTON_DATA_DIR/core/matrix-admin-token" 2>/dev/null')" ||
     { echo "读不到 Matrix 管理令牌"; return 1; }
   docker run --rm --network "container:$(core_container)" curlimages/curl:8.23.0 --noproxy '*' -s \
     -H "Authorization: Bearer $adm" "$mu/_matrix/client/v3/rooms/$room/messages?limit=$1&dir=b"
@@ -151,7 +156,13 @@ extra_check() { # 邮件专项：用应用的「把文件发到邮箱」接口�
     out="$(_delivered_after com.stirlingtools.stirling-pdf "$sent_at")" || { echo "$out"; return 1; }
     if [[ "$out" != 0 ]]; then seen=1; break; fi
   done
-  [[ "$seen" == 1 ]] || { echo "等了 5 分钟没看到信投进主人的 Wonton 私聊（异步发送没走到 SMTP？）"; return 1; }
+  if [[ "$seen" != 1 ]]; then
+    echo "等了 5 分钟没看到信投进主人的 Wonton 私聊；邮件去向："
+    _mailpit_summary || true
+    echo "核心日志里 mail 相关的行："
+    docker logs "$(core_container)" 2>&1 | grep -iE "mail|smtp|mailbox" | tail -8 || true
+    return 1
+  fi
   for i in {1..12}; do
     sleep 5
     out="$(_ours_in_mailpit "$owner_email")" || { echo "$out"; return 1; }
