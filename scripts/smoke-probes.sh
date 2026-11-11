@@ -83,11 +83,28 @@ _ours_in_mailpit() { # <owner 邮箱>：Stirling 发的、还没被核心取走�
     [.messages[] | select((.From.Address == $f) and ([.To[].Address] | index($t)))] | length'
 }
 
+wonton_chat_events() { # <条数>：核心投递事件的房间最近消息。核心实测亚秒取走信件（投完即删），
+  # 在 Mailpit 里几乎抓不到中间态，投进主人 Wonton 私聊的房间事件才是权威证据。
+  local mu room adm
+  mu="$(docker exec "$(core_container)" printenv WONTON_MATRIX_URL)"
+  room="$(docker exec "$(core_container)" sh -c 'cat "$WONTON_DATA_DIR/core/matrix-notice-room"')" ||
+    { echo "读不到通知房间 id"; return 1; }
+  adm="$(docker exec "$(core_container)" sh -c 'cat "$WONTON_DATA_DIR/core/matrix-admin-token"')" ||
+    { echo "读不到 Matrix 管理令牌"; return 1; }
+  docker run --rm --network "container:$(core_container)" curlimages/curl:8.23.0 --noproxy '*' -s \
+    -H "Authorization: Bearer $adm" "$mu/_matrix/client/v3/rooms/$room/messages?limit=$1&dir=b"
+}
+
+_delivered_after() { # <插件 id> <发送时刻毫秒>：发送之后投进主人 Wonton 私聊的新邮件事件数
+  wonton_chat_events 30 | jq -r --arg p "$1" --argjson ts "$2" '
+    [.chunk[] | select(.origin_server_ts > $ts and .content["app.wonton.plugin_mail"].plugin_id == $p)] | length'
+}
+
 extra_check() { # 邮件专项：用应用的「把文件发到邮箱」接口（POST /api/v1/general/send-email，
   # mail.enabled 才注册）给主人的内部邮箱发一封带附件的信，等它进 Mailpit、再等核心投进私聊后
   # 取走；发给外部地址应用要报失败。
   # 应用自己的登录被关掉（compose 的 init 服务说明），接口经网关用主人会话调（web_get 带 jar）。
-  local owner_email pdf out seen i code
+  local owner_email pdf out seen i code sent_at
   [[ -n "${SMOKE_JAR:-}" && -n "${SMOKE_WEB_URL:-}" && -n "${SMOKE_OWNER:-}" ]] ||
     { echo "缺冒烟变量：需要 SMOKE_JAR/SMOKE_WEB_URL/SMOKE_OWNER" >&2; return 1; }
   # 主人的内部邮箱：规范固定 <用户名>@wonton.internal（冒烟工具按形状拼；应用发不了外部地址的信）。
@@ -101,7 +118,9 @@ extra_check() { # 邮件专项：用应用的「把文件发到邮箱」接口�
   owner_email="$SMOKE_OWNER@wonton.internal"
   pdf="$(mktemp /tmp/stirling-smoke-XXXXXX.pdf)"
   printf '%%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\ntrailer<</Size 2/Root 1 0 R>>\n%%%%EOF\n' >"$pdf"
-  # 发送是 @Async 的：200 只说明受理，信要等几秒才进 Mailpit；出现后再等核心投走（投递成功才删）。
+  # 发送是 @Async 的；核心亚秒取走信件，Mailpit 中间态抓不到——记发送时刻，直接等主人
+  # 私聊里的投递事件（主题是探针定的「Wonton smoke」）。
+  sent_at="$(date +%s%3N)"
   out="$(web_get /api/v1/general/send-email \
     -F "fileInput=@$pdf;filename=wonton-smoke.pdf" -F "to=$owner_email" \
     -F "subject=Wonton smoke" -F "body=wonton smoke attachment" -w '\n%{http_code}')" ||
@@ -113,18 +132,17 @@ extra_check() { # 邮件专项：用应用的「把文件发到邮箱」接口�
   seen=0
   for i in {1..60}; do
     sleep 5
-    out="$(_ours_in_mailpit "$owner_email")" || { echo "$out"; return 1; }
+    out="$(_delivered_after com.stirlingtools.stirling-pdf "$sent_at")" || { echo "$out"; return 1; }
     if [[ "$out" != 0 ]]; then seen=1; break; fi
   done
-  [[ "$seen" == 1 ]] || { echo "等了 5 分钟没看到信进 Mailpit（异步发送没走到 SMTP？）"; return 1; }
-  echo "信进了 Mailpit"
-  for i in {1..24}; do
+  [[ "$seen" == 1 ]] || { echo "等了 5 分钟没看到信投进主人的 Wonton 私聊（异步发送没走到 SMTP？）"; return 1; }
+  for i in {1..12}; do
     sleep 5
     out="$(_ours_in_mailpit "$owner_email")" || { echo "$out"; return 1; }
     [[ "$out" == 0 ]] && break
-    [[ "$i" == 24 ]] && { echo "等了 2 分钟信还在 Mailpit，核心没取走（投递失败？）"; return 1; }
+    [[ "$i" == 12 ]] && { echo "信投进了私聊，但 Mailpit 里还有滞留（核心没删？）"; return 1; }
   done
-  echo "信已被核心投进收件人的 Wonton 私聊（Mailpit 里删了）"
+  echo "信已投进主人的 Wonton 私聊，Mailpit 没有滞留"
 
   # 外部收件人：核心在 SMTP 阶段 550 拒收，应用报 500 带失败原因
   out="$(web_get /api/v1/general/send-email \
