@@ -81,10 +81,10 @@ x-wonton:
   id: com.stirlingtools.stirling-pdf
   version: 0.2.0
   kind: app
-  title: { zh: Stirling-PDF, en: Stirling-PDF }
+  title: { zh: PDF 工具箱（Stirling-PDF）, en: PDF Toolbox (Stirling-PDF) }
   description:
-    zh: "本地 PDF 工具箱：合并、拆分、压缩、转换、OCR，文件不出你的机器"
-    en: "Local PDF toolbox: merge, split, compress, convert and OCR, files never leave your machine"
+    zh: "处理 PDF 的万能工具箱：合并、拆分、压缩、加密码、转图片、认字等 60 多种操作，打开网页就能用，文件只在家里处理。"
+    en: "An all-in-one PDF toolbox: merge, split, compress, add a password, convert to images, recognize text and more — over 60 tools in the browser, with files processed at home."
   icon: icon.svg
   notices: [NOTICE]
   screenshots: [screenshots/phone.png]
@@ -98,8 +98,7 @@ x-wonton:
     en: [PDF, Documents, Tools]
   about:
     zh: |
-      60 多个 PDF 工具：合并、拆分、压缩、加密码、去密码、转图片、图片转 PDF、Office 互转、OCR 文字识别、
-      页面整理、水印、签名、元数据编辑等，全部在本机处理。
+      60 多个 PDF 工具：合并、拆分、压缩、加密码、去密码、转图片、图片转 PDF、Office 互转、认字（OCR）、页面整理、水印、签名、修改文件信息等，全部在本机处理。
 
       中文 OCR 开箱即用（内置简体中文语言包）。应用不另设账号，打开网页登录云吞后直接用。
       登录、用户管理等模块按上游的专有许可发布，免费版即可用（5 个用户上限）。
@@ -109,8 +108,7 @@ x-wonton:
       应用发的信（签名邀请、把文件发到邮箱）会出现在收件人的「Wonton」私聊里，收件人限家里人；
       发给外部邮箱会发送失败，应用当场报错。
     en: |
-      60+ PDF tools: merge, split, compress, encrypt, decrypt, convert to images, images to PDF,
-      Office conversion, OCR, page organizer, watermark, signing, metadata editing and more, all processed locally.
+      Over 60 PDF tools: merge, split, compress, add or remove passwords, convert to images, images to PDF, Office conversion, text recognition (OCR), page organizing, watermarks, signing, editing file details and more, all processed locally.
 
       Chinese OCR works out of the box (Simplified Chinese language pack included). The app keeps
       no accounts of its own — sign in to Wonton and you are in. Sign-in, user management and
