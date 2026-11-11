@@ -24,9 +24,10 @@ export SMOKE_NOTE="应用登录被 custom_settings.yml 关掉、应用 API 匿�
 # 但登录关闭时请求仍是匿名的（实测 3.3.0：Bearer 和会话 Cookie 访问都回 401），应用 API 写不了用户数据。
 # 数据卷 `/configs` 里是用户库（H2）、设置和 custom_settings.yml，升级把它弄丢等于把插件设置改回去；
 # 这里以应用用户（1000）在 /configs 写一个带随机标记的文件，升级/重装后读回核对。
-# 容器按核心打的标签找，不拼名字：data_write 在装旧 tag 的阶段跑，那时主流程还没导出 SMOKE_INSTANCE。
-_stirling_container() { # 应用容器名按核心规则拼（wonton-<实例>--<slug 的连字符形>--app）；重装后的容器标签
-  # 曾在 61 的冒烟里匹配不到（附加检查挂在这里），名字查不到时再按标签兜底。
+# 容器名按核心规则拼、标签兜底（见 _stirling_container）：主流程晚些才导出 SMOKE_INSTANCE，
+# 这里先从 SMOKE_BASE 的域名取实例名。
+_stirling_container() { # 应用容器名按核心规则拼（wonton-<实例>--<slug 的连字符形>--app）；重装后的容器
+  # 用标签匹配不到过一次（附加检查挂在这里），名字查不到时再按标签兜底。
   local inst="${SMOKE_INSTANCE:-}"
   if [[ -z "$inst" && -n "${SMOKE_BASE:-}" ]]; then
     inst="${SMOKE_BASE#http://}"; inst="${inst%%.*}"
