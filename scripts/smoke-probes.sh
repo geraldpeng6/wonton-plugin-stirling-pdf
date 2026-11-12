@@ -26,7 +26,7 @@ export SMOKE_NOTE="应用登录被 custom_settings.yml 关掉、应用 API 匿�
 # 这里以应用用户（1000）在 /configs 写一个带随机标记的文件，升级/重装后读回核对。
 # 容器名按核心规则拼、标签兜底（见 _stirling_container）。
 _stirling_container() { # 应用容器：名字按核心规则拼（wonton-<实例>--<slug 的连字符形>--app）；
-  # 实例名还没导出时（极早调用）按 SMOKE_BASE 的主机名第一段推，名字查不到再按标签兜底。
+  # 实例名未导出时（极早调用）按 SMOKE_BASE 的主机名第一段推，名字查不到再按标签兜底。
   local inst="${SMOKE_INSTANCE:-}"
   if [[ -z "$inst" && -n "${SMOKE_BASE:-}" ]]; then
     inst="${SMOKE_BASE#http://}"; inst="${inst%%.*}"
