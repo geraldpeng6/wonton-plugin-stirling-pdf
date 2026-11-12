@@ -61,7 +61,7 @@ data_check() {
   [[ "$out" == "$marker" ]] || { echo "标记对不上：期待 $marker，看到 $out"; return 1; }
 }
 
-# ---------- 邮件（notify）：真发一封带附件的信，核对核心投进私聊（extra_check 由 e2e 冒烟跑） ----------
+# ---------- 邮件（notify）：真发一封带附件的信，核对核心投进私聊（extra_check 附加检查） ----------
 
 core_container() { # 核心容器：名字按核心规则拼（wonton-<实例>--core），兜底走 compose 项目标签
   local inst="${SMOKE_INSTANCE:-}"
