@@ -24,10 +24,9 @@ export SMOKE_NOTE="应用登录被 custom_settings.yml 关掉、应用 API 匿�
 # 但登录关闭时请求仍是匿名的（实测 3.3.0：Bearer 和会话 Cookie 访问都回 401），应用 API 写不了用户数据。
 # 数据卷 `/configs` 里是用户库（H2）、设置和 custom_settings.yml，升级把它弄丢等于把插件设置改回去；
 # 这里以应用用户（1000）在 /configs 写一个带随机标记的文件，升级/重装后读回核对。
-# 容器名按核心规则拼、标签兜底（见 _stirling_container）：主流程晚些才导出 SMOKE_INSTANCE，
-# 这里先从 SMOKE_BASE 的域名取实例名。
-_stirling_container() { # 应用容器名按核心规则拼（wonton-<实例>--<slug 的连字符形>--app）；重装后的容器
-  # 用标签匹配不到过一次（附加检查挂在这里），名字查不到时再按标签兜底。
+# 容器名按核心规则拼、标签兜底（见 _stirling_container）。
+_stirling_container() { # 应用容器：名字按核心规则拼（wonton-<实例>--<slug 的连字符形>--app）；
+  # 实例名还没导出时（极早调用）按 SMOKE_BASE 的主机名第一段推，名字查不到再按标签兜底。
   local inst="${SMOKE_INSTANCE:-}"
   if [[ -z "$inst" && -n "${SMOKE_BASE:-}" ]]; then
     inst="${SMOKE_BASE#http://}"; inst="${inst%%.*}"
@@ -41,10 +40,6 @@ _stirling_container() { # 应用容器名按核心规则拼（wonton-<实例>--<
   docker ps --format '{{.Names}}' "${args[@]}" | head -1
 }
 
-marker_file() { # SMOKE_STATE 在套件里是状态目录（e2e 传的是标记文件本身），标记放对应路径
-  if [[ -d "$SMOKE_STATE" ]]; then printf '%s' "$SMOKE_STATE/stirling-marker"; else printf '%s' "${SMOKE_STATE}.marker"; fi
-}
-
 data_write() {
   local marker container
   [[ -n "${SMOKE_STATE:-}" ]] || { echo "SMOKE_STATE 没设"; return 1; }
@@ -53,12 +48,12 @@ data_write() {
   [[ -n "$container" ]] || { echo "找不到应用容器（wonton.instance 标签）"; return 1; }
   docker exec -u 1000:1000 "$container" sh -c 'printf %s "$1" > "/configs/$2"' sh "$marker" "$marker" ||
     { echo "写不进 /configs（容器 $container）"; return 1; }
-  printf '%s' "$marker" >"$(marker_file)"
+  printf '%s' "$marker" >"$SMOKE_STATE"
 }
 
 data_check() {
   local marker container out
-  marker="$(cat "$(marker_file)")" || { echo "读不到标记文件"; return 1; }
+  marker="$(cat "$SMOKE_STATE")" || { echo "读不到标记文件"; return 1; }
   container="$(_stirling_container)"
   [[ -n "$container" ]] || { echo "找不到应用容器（wonton.instance 标签）"; return 1; }
   out="$(docker exec -u 1000:1000 "$container" sh -c 'cat "/configs/$1" 2>&1' sh "$marker")" ||
@@ -129,14 +124,8 @@ extra_check() { # 邮件专项：用应用的「把文件发到邮箱」接口�
   [[ -n "${SMOKE_JAR:-}" && -n "${SMOKE_WEB_URL:-}" && -n "${SMOKE_OWNER:-}" ]] ||
     { echo "缺冒烟变量：需要 SMOKE_JAR/SMOKE_WEB_URL/SMOKE_OWNER" >&2; return 1; }
   # 主人的内部邮箱：规范固定 <用户名>@wonton.internal（冒烟工具按形状拼；应用发不了外部地址的信）。
-  # 应用自己的登录被关掉（compose 的 init 服务说明），接口经网关用主人会话调。附加检查跑在
-  # 主流程 web_login 之前，jar 是冷的：先自己走一遍核心令牌登录 + 应用网页跳转把会话建起来。
-  curl -sS --noproxy '*' -o /dev/null -b "$SMOKE_JAR" -c "$SMOKE_JAR" \
-    --data-urlencode "token=$SMOKE_TOKEN" "$SMOKE_BASE/_wonton/login" ||
-    { echo "主人令牌登录不了核心"; return 1; }
-  curl -sS --noproxy '*' -o /dev/null -L -b "$SMOKE_JAR" -c "$SMOKE_JAR" \
-    -H 'Accept: text/html' "$SMOKE_WEB_URL/" || { echo "走不通网关到应用的会话"; return 1; }
-  owner_email="$SMOKE_OWNER@wonton.internal"
+  # 网页项已经建立主人会话（dweb 先登录，web_get 带的是同一个会话），直接用。
+  owner_email="${SMOKE_OWNER}@wonton.internal"
   pdf="$(mktemp /tmp/stirling-smoke-XXXXXX.pdf)"
   printf '%%PDF-1.4\n1 0 obj<</Type/Catalog/Pages 2 0 R>>endobj\ntrailer<</Size 2/Root 1 0 R>>\n%%%%EOF\n' >"$pdf"
   # 发送是 @Async 的；核心亚秒取走信件，Mailpit 中间态抓不到——记发送时刻，直接等主人
